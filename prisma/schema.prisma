@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum MatchFormat {
+  LIMITED_OVERS
+  T20
+  T10
+  CUSTOM
+}
+
+enum MatchStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TossDecision {
+  BAT
+  BOWL
+}
+
+enum InningsStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum PlayerRole {
+  BATSMAN
+  BOWLER
+  ALL_ROUNDER
+  WICKET_KEEPER
+}
+
+enum BattingStyle {
+  RIGHT_HAND
+  LEFT_HAND
+}
+
+enum BowlingStyle {
+  RIGHT_ARM_FAST
+  RIGHT_ARM_MEDIUM
+  RIGHT_ARM_SPIN
+  LEFT_ARM_FAST
+  LEFT_ARM_MEDIUM
+  LEFT_ARM_SPIN
+}
+
+enum ExtraType {
+  NONE
+  WIDE
+  NO_BALL
+  BYE
+  LEG_BYE
+}
+
+enum DismissalType {
+  BOWLED
+  CAUGHT
+  RUN_OUT
+  LBW
+  STUMPED
+  HIT_WICKET
+  RETIRED
+}
+
+model User {
+  id           String       @id @default(uuid())
+  phone        String       @unique
+  name         String?
+  avatarUrl    String?
+  status       UserStatus   @default(ACTIVE)
+  refreshToken String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  roles        UserRole[]
+  teamMembers  TeamMember[]
+  players      Player[]
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  users       UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Team {
+  id             String       @id @default(uuid())
+  name           String
+  shortName      String       @unique
+  logoUrl        String?
+  homeGround     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  members        TeamMember[]
+  players        Player[]
+  teamAMatches   Match[]      @relation("TeamAMatches")
+  teamBMatches   Match[]      @relation("TeamBMatches")
+  winnerMatches  Match[]      @relation("WinnerMatches")
+  tossWinner     Match[]      @relation("TossWinnerMatches")
+  battingInnings Innings[]    @relation("BattingTeam")
+  bowlingInnings Innings[]    @relation("BowlingTeam")
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  userId   String
+  role     String   @default("MEMBER")
+  joinedAt DateTime @default(now())
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model Player {
+  id             String        @id @default(uuid())
+  userId         String?
+  teamId         String
+  fullName       String
+  jerseyNumber   String?
+  primaryRole    PlayerRole    @default(ALL_ROUNDER)
+  battingStyle   BattingStyle  @default(RIGHT_HAND)
+  bowlingStyle   BowlingStyle  @default(RIGHT_ARM_MEDIUM)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  team           Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  matchSquads    MatchSquad[]
+  strikerBalls   Ball[]        @relation("StrikerBalls")
+  nonStrikerBall Ball[]        @relation("NonStrikerBalls")
+  bowlerBalls    Ball[]        @relation("BowlerBalls")
+  bowlerOvers    Over[]        @relation("BowlerOvers")
+  wicketsTaken   Wicket[]      @relation("BowlerWickets")
+  wicketsOut     Wicket[]      @relation("OutPlayer")
+  fielderWickets Wicket[]      @relation("FielderWickets")
+}
+
+model Match {
+  id            String       @id @default(uuid())
+  title         String
+  slug          String       @unique
+  teamAId       String
+  teamBId       String
+  venue         String
+  scheduledAt   DateTime
+  totalOvers    Int          @default(20)
+  format        MatchFormat  @default(LIMITED_OVERS)
+  status        MatchStatus  @default(SCHEDULED)
+  tossWinnerId  String?
+  tossDecision  TossDecision?
+  winnerTeamId  String?
+  resultSummary String?
+  liveStreamUrl String?
+  description   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  teamA         Team         @relation("TeamAMatches", fields: [teamAId], references: [id])
+  teamB         Team         @relation("TeamBMatches", fields: [teamBId], references: [id])
+  tossWinner    Team?        @relation("TossWinnerMatches", fields: [tossWinnerId], references: [id])
+  winnerTeam    Team?        @relation("WinnerMatches", fields: [winnerTeamId], references: [id])
+  squads        MatchSquad[]
+  innings       Innings[]
+}
+
+model MatchSquad {
+  id             String   @id @default(uuid())
+  matchId        String
+  teamId         String
+  playerId       String
+  isCaptain      Boolean  @default(false)
+  isWicketKeeper Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  match          Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId])
+}
+
+model Innings {
+  id            String        @id @default(uuid())
+  matchId       String
+  inningsNumber Int
+  battingTeamId String
+  bowlingTeamId String
+  totalRuns     Int           @default(0)
+  totalWickets  Int           @default(0)
+  totalOvers    Float         @default(0.0)
+  status        InningsStatus @default(NOT_STARTED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  match         Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  battingTeam   Team          @relation("BattingTeam", fields: [battingTeamId], references: [id])
+  bowlingTeam   Team          @relation("BowlingTeam", fields: [bowlingTeamId], references: [id])
+  overs         Over[]
+  balls         Ball[]
+
+  @@unique([matchId, inningsNumber])
+}
+
+model Over {
+  id            String   @id @default(uuid())
+  inningsId     String
+  overNumber    Int
+  bowlerId      String
+  runsConceded  Int      @default(0)
+  wicketsTaken  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  innings       Innings  @relation(fields: [inningsId], references: [id], onDelete: Cascade)
+  bowler        Player   @relation("BowlerOvers", fields: [bowlerId], references: [id])
+  balls         Ball[]
+
+  @@unique([inningsId, overNumber])
+}
+
+model Ball {
+  id           String    @id @default(uuid())
+  inningsId    String
+  overId       String
+  ballNumber   Int
+  strikerId    String
+  nonStrikerId String
+  bowlerId     String
+  runsBat      Int       @default(0)
+  totalRuns    Int       @default(0)
+  isExtra      Boolean   @default(false)
+  extraType    ExtraType @default(NONE)
+  isWicket     Boolean   @default(false)
+  timestamp    DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  innings      Innings   @relation(fields: [inningsId], references: [id], onDelete: Cascade)
+  over         Over      @relation(fields: [overId], references: [id], onDelete: Cascade)
+  striker      Player    @relation("StrikerBalls", fields: [strikerId], references: [id])
+  nonStriker   Player    @relation("NonStrikerBalls", fields: [nonStrikerId], references: [id])
+  bowler       Player    @relation("BowlerBalls", fields: [bowlerId], references: [id])
+  wicket       Wicket?
+}
+
+model Wicket {
+  id            String        @id @default(uuid())
+  ballId        String        @unique
+  playerOutId   String
+  bowlerId      String
+  fielderId     String?
+  dismissalType DismissalType
+  createdAt     DateTime      @default(now())
+  ball          Ball          @relation(fields: [ballId], references: [id], onDelete: Cascade)
+  playerOut     Player        @relation("OutPlayer", fields: [playerOutId], references: [id])
+  bowler        Player        @relation("BowlerWickets", fields: [bowlerId], references: [id])
+  fielder       Player?       @relation("FielderWickets", fields: [fielderId], references: [id])
+}
